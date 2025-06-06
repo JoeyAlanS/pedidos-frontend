@@ -18,4 +18,6 @@ export interface Pedido {
   itens: ItemPedido[];
   valorTotal?: number;
   status?: string;
+    entregadorId?: string;
+
 }
