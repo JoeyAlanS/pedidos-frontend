@@ -1,10 +1,3 @@
-export interface ItemCardapio {
-  id: string;
-  nome: string;
-  descricao: string;
-  preco: number;
-}
-
 export interface ItemPedido {
   produtoId: string;
   nomeProduto: string;
@@ -13,11 +6,32 @@ export interface ItemPedido {
 }
 
 export interface Pedido {
-  id?: string; // só estará preenchido após criar pedido
+  id: string;
   clienteId: string;
+  clienteNome: string;
   itens: ItemPedido[];
-  valorTotal?: number;
-  status?: string;
-    entregadorId?: string;
+  valorTotal: number;
+  status: string;
+  entregadorId?: string | null;
+  statusEntrega?: string; 
+  nomeEntregador?: string;
 
 }
+
+export interface ItemCardapioDTO {
+  id: string;
+  nome: string;
+  descricao: string;
+  preco: number;
+}
+
+export interface StatusEntregadorDTO {
+  nomeEntregador: string;
+  statusEntrega: string;
+}
+
+type RestauranteResumoDTO = {
+  id: string;
+  nome: string;
+  endereco?: string;
+};

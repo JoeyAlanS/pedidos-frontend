@@ -1,39 +1,42 @@
 import React, { useEffect, useState } from "react";
-import { ItemCardapio, ItemPedido, Pedido } from "./types";
+import { ItemCardapioDTO, ItemPedido, Pedido } from "./types";
 
-// Adicione este exemplo na sua definição de tipos:
-// export interface Pedido {
-//   id?: string;
-//   clienteId: string;
-//   entregadorId?: string; // <-- Esta linha nova!
-//   itens: ItemPedido[];
-//   status?: string;
-// }
-
-const API_BASE = "http://localhost:8081/api/pedidos";
+const API_BASE = "https://pedidoplus-production.up.railway.app/api/pedidos";
 
 type StatusEntrega = {
   entregador: string;
   status: string;
 };
 
-type Cliente = { nome: string; id: string };
+type NovoPedido = {
+  clienteId: string;
+  itens: ItemPedido[];
+  entregadorId?: string | null;
+};
+
+type RestauranteResumoDTO = {
+  id: string;
+  nome: string;
+  endereco?: string;
+};
 
 function App() {
-  const [cardapio, setCardapio] = useState<ItemCardapio[]>([]);
-  const [pedido, setPedido] = useState<Pedido>({
+  const [cardapio, setCardapio] = useState<ItemCardapioDTO[]>([]);
+  const [pedido, setPedido] = useState<NovoPedido>({
     clienteId: "",
     itens: [],
   });
   const [statusPedido, setStatusPedido] = useState<string | null>(null);
-  const [tela, setTela] = useState<"cardapio" | "acompanhamento" | "pedidos" | "login">("login");
+  const [tela, setTela] = useState<"restaurantes" | "cardapio" | "acompanhamento" | "pedidos" | "login">("login");
   const [statusEntrega, setStatusEntrega] = useState<StatusEntrega | null>(null);
   const [nomeCliente, setNomeCliente] = useState<string>("Cliente");
   const [pedidosCliente, setPedidosCliente] = useState<Pedido[]>([]);
-  const [clientes, setClientes] = useState<Record<string, string>>({});
   const [clienteIdInput, setClienteIdInput] = useState<string>("");
-  const [nomesEntregadores, setNomesEntregadores] = useState<Record<string, string>>({});
   const [ultimoPedidoId, setUltimoPedidoId] = useState<string | null>(null);
+  const [pedidoSelecionado, setPedidoSelecionado] = useState<string | null>(null);
+
+  const [restaurantes, setRestaurantes] = useState<RestauranteResumoDTO[]>([]);
+  const [restauranteSelecionado, setRestauranteSelecionado] = useState<RestauranteResumoDTO | null>(null);
 
   const handleLogin = () => {
     if (clienteIdInput.trim().length === 0) {
@@ -44,34 +47,43 @@ function App() {
       ...p,
       clienteId: clienteIdInput,
     }));
-    setTela("cardapio");
+    setTela("restaurantes");
   };
 
   useEffect(() => {
     if (!pedido.clienteId) return;
     fetch(`${API_BASE}/cliente/${pedido.clienteId}/nome`)
-      .then(res => res.json())
-      .then(data => setNomeCliente(data.nome || "Cliente"))
+      .then((res) => res.json())
+      .then((data) => setNomeCliente(data.nome || "Cliente"))
       .catch(() => setNomeCliente("Cliente"));
   }, [pedido.clienteId]);
 
   useEffect(() => {
-    if (tela === "cardapio") {
-      fetch(`${API_BASE}/itensCardapio`)
-        .then(res => res.json())
-        .then(data => setCardapio(Array.isArray(data) ? data : []))
-        .catch(err => {
+    if (tela === "restaurantes") {
+      fetch(`${API_BASE}/restaurantes`)
+        .then((res) => res.json())
+        .then((data) => setRestaurantes(Array.isArray(data) ? data : []))
+        .catch(() => setRestaurantes([]));
+    }
+  }, [tela]);
+
+  useEffect(() => {
+    if (tela === "cardapio" && restauranteSelecionado) {
+      fetch(`${API_BASE}/restaurantes/${restauranteSelecionado.id}/cardapio`)
+        .then((res) => res.json())
+        .then((data) => setCardapio(Array.isArray(data) ? data : []))
+        .catch((err) => {
           alert("Erro ao buscar cardápio: " + err);
           setCardapio([]);
         });
     }
-  }, [tela]);
+  }, [tela, restauranteSelecionado]);
 
-  const addItem = (item: ItemCardapio) => {
-    const jaExiste = pedido.itens.find(i => i.produtoId === item.id);
+  const addItem = (item: ItemCardapioDTO) => {
+    const jaExiste = pedido.itens.find((i) => i.produtoId === item.id);
     let novosItens: ItemPedido[];
     if (jaExiste) {
-      novosItens = pedido.itens.map(i =>
+      novosItens = pedido.itens.map((i) =>
         i.produtoId === item.id
           ? { ...i, quantidade: i.quantidade + 1 }
           : i
@@ -92,12 +104,12 @@ function App() {
 
   const removeItem = (itemId: string) => {
     const novosItens = pedido.itens
-      .map(i =>
+      .map((i) =>
         i.produtoId === itemId
           ? { ...i, quantidade: i.quantidade - 1 }
           : i
       )
-      .filter(i => i.quantidade > 0);
+      .filter((i) => i.quantidade > 0);
     setPedido({ ...pedido, itens: novosItens });
   };
 
@@ -107,41 +119,26 @@ function App() {
   );
 
   const buscarStatusEntrega = async (pedidoId: string) => {
+    setPedidoSelecionado(pedidoId);
     setStatusEntrega(null);
     try {
-      const res = await fetch(`${API_BASE}/${pedidoId}`);
+      const res = await fetch(`${API_BASE}/${pedidoId}/entregador`); 
       if (res.ok) {
         const data = await res.json();
-        let entregador = "-";
-        if (data.entregadorId) {
-          try {
-            const nomeRes = await fetch(`${API_BASE}/entregador/${data.entregadorId}/nome`);
-            if (nomeRes.ok) {
-              const nomeData = await nomeRes.json();
-              entregador = nomeData.nome || data.entregadorId;
-            } else {
-              entregador = "Entregador não disponível no momento";
-            }
-          } catch {
-            entregador = "Entregador não disponível no momento";
-          }
-        } else {
-          entregador = "Entregador não disponível no momento";
-        }
         setStatusEntrega({
-          entregador,
-          status: data.status || "Aguardando entrega"
+          entregador: data.nomeEntregador || data.entregadorId || "-",
+          status: data.statusEntrega || "Aguardando entrega",
         });
       } else {
         setStatusEntrega({
           entregador: "Entregador não disponível no momento",
-          status: "Status não encontrado, consulte o restaurante."
+          status: "Status não encontrado, consulte o restaurante.",
         });
       }
     } catch {
       setStatusEntrega({
         entregador: "Entregador não disponível no momento",
-        status: "Falha ao consultar status do pedido."
+        status: "Falha ao consultar status do pedido.",
       });
     }
   };
@@ -153,7 +150,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch(API_BASE, {
+      const res = await fetch(`${API_BASE}/criar-pedidos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pedido),
@@ -178,58 +175,14 @@ function App() {
     }
   }, [tela, ultimoPedidoId]);
 
-  async function buscarNomeCliente(id: string): Promise<string> {
-    try {
-      const res = await fetch(`${API_BASE}/cliente/${id}/nome`);
-      if (res.ok) {
-        const data = await res.json();
-        return data.nome || id;
-      }
-      return id;
-    } catch {
-      return id;
-    }
-  }
-
-  async function buscarNomeEntregador(id: string): Promise<string> {
-    try {
-      const res = await fetch(`${API_BASE}/entregador/${id}/nome`);
-      if (res.ok) {
-        const data = await res.json();
-        return data.nome || id;
-      }
-      return id;
-    } catch {
-      return id;
-    }
-  }
 
   const buscarPedidosCliente = async () => {
     if (!pedido.clienteId) return;
     try {
       const res = await fetch(`${API_BASE}/cliente/${pedido.clienteId}`);
       if (res.ok) {
-        const data = await res.json();
-        setPedidosCliente(Array.isArray(data) ? data : []);
-        const pedidos: Pedido[] = Array.isArray(data) ? data : [];
-        // Cliente:
-        const clienteIds = [...new Set(pedidos.map((p) => p.clienteId))];
-        const clientesPromises = clienteIds.map(async (id) => ({
-          id,
-          nome: await buscarNomeCliente(id),
-        }));
-        const nomesClientes = await Promise.all(clientesPromises);
-        setClientes(Object.fromEntries(nomesClientes.map(o => [o.id, o.nome])));
-        // Entregador:
-        const entregadorIds = [
-          ...new Set(pedidos.map((p) => p.entregadorId).filter(Boolean))
-        ];
-        const entregadoresPromises = entregadorIds.map(async (id) => ({
-          id,
-          nome: await buscarNomeEntregador(id),
-        }));
-        const nomesEntregadoresArray = await Promise.all(entregadoresPromises);
-        setNomesEntregadores(Object.fromEntries(nomesEntregadoresArray.map(o => [o.id, o.nome])));
+        const pedidos: Pedido[] = await res.json();
+        setPedidosCliente(Array.isArray(pedidos) ? pedidos : []);
         setTela("pedidos");
       } else {
         alert("Erro ao buscar pedidos do cliente.");
@@ -243,6 +196,7 @@ function App() {
     setTela("cardapio");
     setStatusEntrega(null);
     setStatusPedido(null);
+    setPedidoSelecionado(null);
   };
 
   if (tela === "login") {
@@ -253,14 +207,117 @@ function App() {
           type="text"
           placeholder="Informe seu ID de cliente"
           value={clienteIdInput}
-          onChange={e => setClienteIdInput(e.target.value)}
+          onChange={(e) => setClienteIdInput(e.target.value)}
           className="form-control mb-3"
         />
-        <button
-          className="btn btn-primary"
-          onClick={handleLogin}
-        >
+        <button className="btn btn-primary" onClick={handleLogin}>
           Entrar
+        </button>
+      </div>
+    );
+  }
+
+  if (tela === "restaurantes") {
+    return (
+      <div className="container mt-5">
+        <h2>Selecione um restaurante</h2>
+        {restaurantes.length === 0 ? (
+          <p>Nenhum restaurante disponível.</p>
+        ) : (
+          <div className="row">
+            {restaurantes.map((rest) => (
+              <div className="col-md-4 mb-3" key={rest.id}>
+                <div className="card">
+                  <div className="card-body">
+                    <h5 className="card-title">{rest.nome}</h5>
+                    {rest.endereco && <p className="card-text"><small>{rest.endereco}</small></p>}
+                    <button
+                      className="btn btn-success"
+                      onClick={() => {
+                        setRestauranteSelecionado(rest);
+                        setTela("cardapio");
+                        setPedido({ ...pedido, itens: [] });
+                      }}
+                    >
+                      Ver cardápio
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          className="btn btn-secondary mt-3"
+          onClick={() => setTela("login")}
+        >
+          Sair
+        </button>
+      </div>
+    );
+  }
+
+  if (tela === "cardapio") {
+    return (
+      <div className="container mt-4">
+        <h2>Bem-vindo, {nomeCliente}!</h2>
+        <h3>Cardápio {restauranteSelecionado ? `- ${restauranteSelecionado.nome}` : ""}</h3>
+        <button
+          className="btn btn-secondary mb-3"
+          onClick={() => setTela("restaurantes")}
+        >
+          Trocar de restaurante
+        </button>
+        <div className="row">
+          {cardapio.map((item) => (
+            <div className="col-md-4 mb-3" key={item.id}>
+              <div className="card">
+                <div className="card-body">
+                  <h5 className="card-title">{item.nome}</h5>
+                  <h6 className="card-subtitle mb-2 text-muted">
+                    R$ {item.preco.toFixed(2)}
+                  </h6>
+                  <p className="card-text">{item.descricao}</p>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => addItem(item)}
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <h4 className="mt-4">Seu Pedido</h4>
+        <ul>
+          {pedido.itens.map((item) => (
+            <li key={item.produtoId}>
+              {item.nomeProduto} - {item.quantidade} x R${" "}
+              {item.precoUnitario.toFixed(2)}
+              <button
+                className="btn btn-sm btn-outline-danger ml-2"
+                onClick={() => removeItem(item.produtoId)}
+              >
+                Remover
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="mb-3">
+          <strong>Total: R$ {valorTotal.toFixed(2)}</strong>
+        </div>
+        {statusPedido && (
+          <div className="alert alert-info">{statusPedido}</div>
+        )}
+        <button
+          className="btn btn-primary mr-2"
+          onClick={efetuarPedido}
+        >
+          Efetuar Pedido
+        </button>
+        <button className="btn btn-secondary" onClick={buscarPedidosCliente}>
+          Ver meus pedidos
         </button>
       </div>
     );
@@ -268,17 +325,37 @@ function App() {
 
   if (tela === "acompanhamento") {
     return (
-      <div className="container mt-5">
+      <div className="container mt-4">
         <h2>Acompanhe seu pedido</h2>
-        {!statusEntrega && <div>Carregando status do pedido...</div>}
-        {statusEntrega && (
-          <div className="card p-4">
-            <h4>Entregador: {statusEntrega.entregador}</h4>
-            <p>Status do pedido: <strong>{statusEntrega.status}</strong></p>
+        {statusEntrega ? (
+          <div>
+            <p>
+              <b>Status:</b> {statusEntrega.status}
+            </p>
+            <p>
+              <b>Entregador:</b> {statusEntrega.entregador}
+            </p>
           </div>
+        ) : (
+          <p>Buscando status da entrega...</p>
         )}
-        <button className="btn btn-secondary mt-3" onClick={voltarParaCardapio}>
-          Voltar ao Cardápio
+        <button
+          className="btn btn-info mt-3 mr-2"
+          onClick={() => ultimoPedidoId && buscarStatusEntrega(ultimoPedidoId)}
+        >
+          Atualizar status
+        </button>
+        <button
+          className="btn btn-secondary mt-3 ml-2"
+          onClick={voltarParaCardapio}
+        >
+          Voltar ao cardápio
+        </button>
+        <button
+          className="btn btn-primary mt-3 ml-2"
+          onClick={buscarPedidosCliente}
+        >
+          Ver todos meus pedidos
         </button>
       </div>
     );
@@ -286,123 +363,65 @@ function App() {
 
   if (tela === "pedidos") {
     return (
-      <div className="container mt-5">
-        <h2>Meus Pedidos</h2>
-        {pedidosCliente.length === 0 && <p>Nenhum pedido encontrado.</p>}
-        {pedidosCliente.length > 0 && (
+      <div className="container mt-4">
+        <h2>Meus pedidos</h2>
+        {statusEntrega && pedidoSelecionado && (
+          <div className="alert alert-info">
+            <strong>Status do Pedido {pedidoSelecionado}:</strong>
+            <br />
+            Status: {statusEntrega.status}
+            <br />
+            Entregador: {statusEntrega.entregador}
+          </div>
+        )}
+        {pedidosCliente.length === 0 ? (
+          <p>Nenhum pedido encontrado.</p>
+        ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Cliente</th>
-                <th>Entregador</th>
-                <th>Itens</th>
-                <th>Total</th>
+                <th>ID Pedido</th>
                 <th>Status</th>
+                <th>Entregador</th>
+                <th>Valor Total</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
               {pedidosCliente.map((p) => (
                 <tr key={p.id}>
                   <td>{p.id}</td>
-                  <td>{clientes[p.clienteId] || p.clienteId}</td>
-                  <td>{p.entregadorId ? (nomesEntregadores[p.entregadorId] || p.entregadorId) : "-"}</td>
+                  <td>{p.status}</td>
                   <td>
-                    {p.itens.map(i => (
-                      <div key={i.produtoId}>{i.nomeProduto} (x{i.quantidade})</div>
-                    ))}
+                    {p.nomeEntregador || p.entregadorId || '-'}
                   </td>
                   <td>
-                    R$ {p.itens.reduce((acc, i) => acc + i.precoUnitario * i.quantidade, 0).toFixed(2)}
+                    {p.valorTotal?.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }) || '-'}
                   </td>
-                  <td>{p.status || "Pendente"}</td>
+                  <td>
+                    <button
+                      className="btn btn-info btn-sm"
+                      onClick={() => buscarStatusEntrega(p.id)}
+                    >
+                      Ver status
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        <button className="btn btn-secondary mt-3" onClick={voltarParaCardapio}>
-          Voltar ao Cardápio
+        <button className="btn btn-secondary" onClick={voltarParaCardapio}>
+          Voltar ao cardápio
         </button>
       </div>
     );
   }
 
-  return (
-    <div className="container mt-5">
-      <h1>Faça seu pedido, {nomeCliente}!</h1>
-      <button className="btn btn-outline-info mb-3" onClick={buscarPedidosCliente}>
-        Ver meus pedidos
-      </button>
-      <div className="row">
-        {cardapio.length === 0 && <div className="col-12">Carregando...</div>}
-        {cardapio.map(item => (
-          <div key={item.id} className="col-md-4 mb-3">
-            <div className="card">
-              <div className="card-body">
-                <h5>{item.nome}</h5>
-                <p>{item.descricao}</p>
-                <p><strong>R$ {item.preco.toFixed(2)}</strong></p>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => addItem(item)}
-                >
-                  Adicionar
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <h2 className="mt-4">Meu Pedido</h2>
-      {pedido.itens.length === 0 && <p>Nenhum item no pedido.</p>}
-      {pedido.itens.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th>Qtd</th>
-              <th>Preço un.</th>
-              <th>Total</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {pedido.itens.map(i => (
-              <tr key={i.produtoId}>
-                <td>{i.nomeProduto}</td>
-                <td>{i.quantidade}</td>
-                <td>R$ {i.precoUnitario.toFixed(2)}</td>
-                <td>R$ {(i.precoUnitario * i.quantidade).toFixed(2)}</td>
-                <td>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => removeItem(i.produtoId)}
-                  >
-                    Remover
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <h4>Total: R$ {valorTotal.toFixed(2)}</h4>
-      <button
-        className="btn btn-success mt-2"
-        onClick={async () => {
-          await efetuarPedido();
-        }}
-        disabled={pedido.itens.length === 0}
-      >
-        Efetuar Pedido
-      </button>
-      {statusPedido && (
-        <div className="mt-3 alert alert-info">{statusPedido}</div>
-      )}
-    </div>
-  );
+  return <div className="container mt-4">Erro inesperado!</div>;
 }
 
 export default App;
